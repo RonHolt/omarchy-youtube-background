@@ -252,7 +252,7 @@ Panel {
         else if (event.key === Qt.Key_Left) root.moveCursorH(-1)
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
           if (root.cursorActive) root.activateCursor()
-          else if (root.ready) root.service.togglePause()
+          else if (root.ready) { root.running ? root.service.togglePause() : root.service.start() }
         }
         // h/l skip 5 s, k/j skip 60 s, as in mpv.
         else if (t === "l") root.seekRelative(5)
@@ -260,7 +260,7 @@ Panel {
         else if (t === "k") root.seekRelative(60)
         else if (t === "j") root.seekRelative(-60)
         else if (!root.ready) event.accepted = false
-        else if (t === "p") root.service.togglePause()
+        else if (t === "p") { root.running ? root.service.togglePause() : root.service.start() }
         else if (t === "m") root.service.setMuted(!root.muted)
         else if (t === "s") root.service.toggle()
         else if (t === "u" || t === "/") { urlField.forceActiveFocus(); urlField.selectAll() }
@@ -388,7 +388,7 @@ Panel {
             hasCursor: root.hasCursorOn("transport", 0)
             onHovered: function(h) { if (h) root.setCursor("transport", 0) }
             iconText: root.running && !root.paused ? "󰏤" : "󰐊"
-            text: root.running ? (root.paused ? "Resume" : "Pause") : "Start"
+            text: root.running ? (root.paused ? "Resume" : "Pause") : "Play"
             foreground: root.fg
             fontFamily: root.fontFamily
             bordered: true
@@ -647,7 +647,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           width: parent.width
-          text: "↑/↓ ←/→ navigate · enter select · h/l 5 s · j/k 60 s · p pause · m mute · s start/stop · u url · esc close"
+          text: "↑/↓ ←/→ navigate · enter select · h/l 5 s · j/k 60 s · p play/pause · m mute · s start/stop · u url · esc close"
           color: Qt.darker(root.fg, 1.7)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
