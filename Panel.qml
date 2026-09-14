@@ -53,15 +53,110 @@ Panel {
     }
   }
 
+  // Single cursor shared by the arrow keys and the mouse, as in the audio
+  // panel: Up/Down walk the rows, Left/Right act on the row under the
+  // cursor, Enter/Space activate it. hjkl are reserved for seeking so the
+  // mpv habit keeps working from any row. Rows are listed top to bottom;
+  // "position" is only present while the stream is seekable.
+  property bool cursorActive: false
+  property string focusSection: "transport"
+  property int selectedIndex: 0
+
+  readonly property var sections: {
+    var s = ["url", "transport"]
+    if (seekable) s.push("position")
+    s.push("volume", "quality", "codec", "fill", "cookies")
+    return s
+  }
+  onSectionsChanged: clampCursor()
+
+  readonly property bool editing: urlField.activeFocus || cookiesField.activeFocus
+    || qualityDropdown.popupOpen || codecDropdown.popupOpen
+
+  function hasCursorOn(section, index) {
+    return cursorActive && focusSection === section && selectedIndex === (index || 0)
+  }
+
+  function setCursor(section, index) {
+    cursorActive = true
+    focusSection = section
+    selectedIndex = index || 0
+  }
+
+  function resetCursor() {
+    cursorActive = false
+    focusSection = "transport"
+    selectedIndex = 0
+  }
+
+  function clampCursor() {
+    if (sections.indexOf(focusSection) < 0) { focusSection = "transport"; selectedIndex = 0 }
+  }
+
+  function moveCursor(delta) {
+    if (!cursorActive) { cursorActive = true; return }
+    var i = sections.indexOf(focusSection)
+    var next = Math.max(0, Math.min(sections.length - 1, i + delta))
+    if (next === i) return
+    focusSection = sections[next]
+    selectedIndex = 0
+  }
+
+  function moveCursorH(delta) {
+    if (!cursorActive) { cursorActive = true; return }
+    if (!ready) return
+    switch (focusSection) {
+      case "transport": selectedIndex = Math.max(0, Math.min(2, selectedIndex + delta)); break
+      case "position": seekRelative(delta * 5); break
+      case "volume": service.setVolume(Math.max(0, Math.min(100, volume + delta * 5))); break
+      case "quality": service.setQuality(cycleOption(qualityDropdown, delta)); break
+      case "codec": service.setCodec(cycleOption(codecDropdown, delta)); break
+    }
+  }
+
+  function activateCursor() {
+    if (!ready) return
+    switch (focusSection) {
+      case "url": urlField.forceActiveFocus(); urlField.selectAll(); break
+      case "transport":
+        if (selectedIndex === 0 && startButton.enabled) { running ? service.togglePause() : service.start() }
+        else if (selectedIndex === 1 && stopButton.enabled) service.stop()
+        else if (selectedIndex === 2) service.setMuted(!muted)
+        break
+      case "position": service.togglePause(); break
+      case "volume": service.setMuted(!muted); break
+      case "quality": qualityDropdown.toggle(); break
+      case "codec": codecDropdown.toggle(); break
+      case "fill": service.setFill(!service.fill); break
+      case "cookies": cookiesField.forceActiveFocus(); cookiesField.selectAll(); break
+    }
+  }
+
+  // Next/previous option of a Dropdown, clamped at the ends.
+  function cycleOption(dropdown, delta) {
+    var opts = dropdown.options
+    var i = -1
+    for (var k = 0; k < opts.length; k++)
+      if (dropdown.optionValue(opts[k]) === dropdown.value) { i = k; break }
+    var next = Math.max(0, Math.min(opts.length - 1, i + delta))
+    return dropdown.optionValue(opts[next])
+  }
+
+  function seekRelative(secs) {
+    if (root.seekable) root.service.seek(secs, "relative")
+  }
+
   function open() {
     openedFromHotkey = false
     setCenterHoverRevealSuppressed(false)
+    resetCursor()
     root.controller.show()
     syncField()
   }
 
   function openFromHotkey() {
     openedFromHotkey = true
+    resetCursor()
     root.controller.show()
     syncField()
     Qt.callLater(function() {
@@ -135,27 +230,41 @@ Panel {
     contentWidth: panel.fittedContentWidth(Style.space(360))
     contentHeight: panel.fittedContentHeight(content.implicitHeight)
 
-    PanelKeyCatcher {
+    // Same shape as PanelKeyCatcher, inlined because the catcher folds
+    // hjkl into the arrow signals and this panel needs them apart: arrows
+    // navigate the rows, hjkl seek like mpv. While a text field or a
+    // dropdown popup owns input, everything is passed through untouched.
+    Item {
       id: keyCatcher
       anchors.fill: parent
-      blocked: urlField.activeFocus || cookiesField.activeFocus
-      onCloseRequested: root.close()
-      onTabRequested: function(direction) { root.switchPanel(direction) }
-      // Space and Return never reach onTextKey: the catcher consumes them
-      // as activateRequested.
-      onActivateRequested: if (root.ready) root.service.togglePause()
-      // Left/Right (h/l) skip 5 s, Up/Down (k/j) skip 60 s, as in mpv.
-      onMoveRequested: function(dx, dy) {
-        if (!root.seekable) return
-        if (dx !== 0) root.service.seek(dx * 5, "relative")
-        else if (dy !== 0) root.service.seek(-dy * 60, "relative")
-      }
-      onTextKey: function(t) {
-        if (!root.ready) return
-        if (t === "p") root.service.togglePause()
+      focus: true
+      Keys.priority: Keys.BeforeItem
+      Keys.onPressed: function(event) {
+        if (root.editing) return
+        var t = event.text
+        event.accepted = true
+        if (event.key === Qt.Key_Escape) root.close()
+        else if (event.key === Qt.Key_Tab) root.switchPanel(1)
+        else if (event.key === Qt.Key_Backtab) root.switchPanel(-1)
+        else if (event.key === Qt.Key_Down) root.moveCursor(1)
+        else if (event.key === Qt.Key_Up) root.moveCursor(-1)
+        else if (event.key === Qt.Key_Right) root.moveCursorH(1)
+        else if (event.key === Qt.Key_Left) root.moveCursorH(-1)
+        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+          if (root.cursorActive) root.activateCursor()
+          else if (root.ready) root.service.togglePause()
+        }
+        // h/l skip 5 s, k/j skip 60 s, as in mpv.
+        else if (t === "l") root.seekRelative(5)
+        else if (t === "h") root.seekRelative(-5)
+        else if (t === "k") root.seekRelative(60)
+        else if (t === "j") root.seekRelative(-60)
+        else if (!root.ready) event.accepted = false
+        else if (t === "p") root.service.togglePause()
         else if (t === "m") root.service.setMuted(!root.muted)
         else if (t === "s") root.service.stop()
         else if (t === "u" || t === "/") { urlField.forceActiveFocus(); urlField.selectAll() }
+        else event.accepted = false
       }
 
       Column {
@@ -239,6 +348,8 @@ Panel {
             font.family: root.fontFamily
             enabled: root.ready
             anchors.verticalCenter: parent.verticalCenter
+            hasCursor: !activeFocus && root.hasCursorOn("url")
+            onHoveredChanged: if (hovered) root.setCursor("url")
 
             Keys.onPressed: function(event) {
               if (event.key === Qt.Key_Escape) {
@@ -272,7 +383,10 @@ Panel {
           spacing: Style.space(6)
 
           Button {
+            id: startButton
             width: (parent.width - parent.spacing * 2) / 3
+            hasCursor: root.hasCursorOn("transport", 0)
+            onHovered: function(h) { if (h) root.setCursor("transport", 0) }
             iconText: root.running && !root.paused ? "󰏤" : "󰐊"
             text: root.running ? (root.paused ? "Resume" : "Pause") : "Start"
             foreground: root.fg
@@ -286,7 +400,10 @@ Panel {
           }
 
           Button {
+            id: stopButton
             width: (parent.width - parent.spacing * 2) / 3
+            hasCursor: root.hasCursorOn("transport", 1)
+            onHovered: function(h) { if (h) root.setCursor("transport", 1) }
             iconText: "󰓛"
             text: "Stop"
             foreground: root.fg
@@ -298,6 +415,8 @@ Panel {
 
           Button {
             width: (parent.width - parent.spacing * 2) / 3
+            hasCursor: root.hasCursorOn("transport", 2)
+            onHovered: function(h) { if (h) root.setCursor("transport", 2) }
             iconText: root.muted ? "󰝟" : "󰕾"
             text: root.muted ? "Unmute" : "Mute"
             foreground: root.fg
@@ -345,6 +464,8 @@ Panel {
           height: positionSlider.implicitHeight + Style.spacing.controlGap
           foreground: root.fg
           outline: true
+          hasCursor: root.hasCursorOn("position")
+          HoverHandler { onHoveredChanged: if (hovered) root.setCursor("position") }
 
           PanelSlider {
             id: positionSlider
@@ -398,6 +519,8 @@ Panel {
           height: volumeSlider.implicitHeight + Style.spacing.controlGap
           foreground: root.fg
           outline: true
+          hasCursor: root.hasCursorOn("volume")
+          HoverHandler { onHoveredChanged: if (hovered) root.setCursor("volume") }
 
           PanelSlider {
             id: volumeSlider
@@ -427,9 +550,13 @@ Panel {
         }
 
         Dropdown {
+          id: qualityDropdown
           width: parent.width
           label: "Max quality"
           fontFamily: root.fontFamily
+          hasCursor: root.hasCursorOn("quality")
+          onHovered: function(h) { if (h) root.setCursor("quality") }
+          onPopupOpenChanged: if (!popupOpen) keyCatcher.forceActiveFocus()
           options: root.ready
             ? root.service.qualityOptions.map(function(q) { return { value: q, label: root.qualityLabel(q) } })
             : []
@@ -439,9 +566,13 @@ Panel {
         }
 
         Dropdown {
+          id: codecDropdown
           width: parent.width
           label: "Preferred codec"
           fontFamily: root.fontFamily
+          hasCursor: root.hasCursorOn("codec")
+          onHovered: function(h) { if (h) root.setCursor("codec") }
+          onPopupOpenChanged: if (!popupOpen) keyCatcher.forceActiveFocus()
           options: [
             { value: "h264", label: "H.264 (lightest, hardware decode everywhere)" },
             { value: "vp9", label: "VP9" },
@@ -460,6 +591,8 @@ Panel {
           foreground: root.fg
           fontFamily: root.fontFamily
           enabled: root.ready
+          hasCursor: root.hasCursorOn("fill")
+          onHovered: function(h) { if (h) root.setCursor("fill") }
           onClicked: root.service.setFill(!root.service.fill)
         }
 
@@ -483,6 +616,8 @@ Panel {
             foreground: root.fg
             font.family: root.fontFamily
             enabled: root.ready
+            hasCursor: !activeFocus && root.hasCursorOn("cookies")
+            onHoveredChanged: if (hovered) root.setCursor("cookies")
 
             Keys.onPressed: function(event) {
               if (event.key === Qt.Key_Escape) {
@@ -512,7 +647,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           width: parent.width
-          text: "space pause · ←/→ 5 s · ↑/↓ 60 s · m mute · s stop · u url · esc close"
+          text: "↑/↓ ←/→ navigate · enter select · h/l 5 s · j/k 60 s · p pause · m mute · s stop · u url · esc close"
           color: Qt.darker(root.fg, 1.7)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
