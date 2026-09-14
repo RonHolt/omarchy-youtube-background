@@ -41,7 +41,8 @@ enabling it.
 ## Use
 
 Click the YouTube glyph in the bar. Paste a URL (or a bare 11-character video
-id) and press Enter or the play button.
+id) and press Enter or the play button. The chevron next to the field lists
+the last ten videos that played, by title; pick one to play it again.
 
 | In the bar | Does |
 | --- | --- |
@@ -61,6 +62,7 @@ works without a mouse:
 | `s` | Stop |
 | `m` | Mute / unmute |
 | `u` or `/` | Edit the URL |
+| `r` | Open the recently played list |
 | `h` / `l` | Skip back / forward 5 seconds |
 | `j` / `k` | Skip back / forward 60 seconds |
 | `Tab` / `Shift+Tab` | Next / previous bar panel |
@@ -90,6 +92,7 @@ omarchy-shell youtube-background quality 1440       # get|best|2160|1440|1080|72
 omarchy-shell youtube-background codec h264         # get|h264|vp9|any
 omarchy-shell youtube-background url get
 omarchy-shell youtube-background cookies brave+gnomekeyring:Default   # get|<browser spec>|<path>|"" to clear
+omarchy-shell youtube-background history get       # get|clear; JSON list of {url, title}, newest first
 omarchy-shell youtube-background status             # JSON incl. position, duration, seekable
 ```
 
@@ -131,6 +134,7 @@ IPC verbs write the common ones.
 | `extraOptions` | | Extra mpv options, space separated, `key=value` form |
 | `cookiesFromBrowser` | | yt-dlp `--cookies-from-browser` spec, e.g. `brave+gnomekeyring:Default`, see below |
 | `cookiesFile` | | Netscape `cookies.txt` passed to yt-dlp, see below |
+| `history` | `[]` | Last ten videos played, `{url, title}` newest first; written by the plugin |
 
 ## When a video will not load
 

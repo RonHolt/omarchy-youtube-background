@@ -1,8 +1,10 @@
 import QtQuick
+import QtQuick.Controls as QQC
 import qs.Commons
 import qs.Ui
 
-// Popout under the bar glyph: URL entry, transport, volume, quality.
+// Popout under the bar glyph: URL entry with history, transport, volume,
+// quality.
 Panel {
   id: root
   moduleName: "ron.youtube-background"
@@ -31,6 +33,8 @@ Panel {
   readonly property string lastError: ready ? service.lastError : ""
   readonly property string stream: ready ? service.stream : ""
   readonly property string cookiesFile: ready ? service.cookies : ""
+  // [{ url, title }], newest first, from the service.
+  readonly property var history: ready && Array.isArray(service.history) ? service.history : []
 
   readonly property string statusLabel: {
     if (!ready) return "Service not loaded"
@@ -57,7 +61,8 @@ Panel {
   // panel: Up/Down walk the rows, Left/Right act on the row under the
   // cursor, Enter/Space activate it. hjkl are reserved for seeking so the
   // mpv habit keeps working from any row. Rows are listed top to bottom;
-  // "position" is only present while the stream is seekable.
+  // "position" is only present while the stream is seekable. The "url" row
+  // has three stops: the field, the history dropdown, the play button.
   property bool cursorActive: false
   property string focusSection: "transport"
   property int selectedIndex: 0
@@ -71,7 +76,7 @@ Panel {
   onSectionsChanged: clampCursor()
 
   readonly property bool editing: urlField.activeFocus || cookiesField.activeFocus
-    || qualityDropdown.popupOpen || codecDropdown.popupOpen
+    || historyPopup.opened || qualityDropdown.popupOpen || codecDropdown.popupOpen
 
   function hasCursorOn(section, index) {
     return cursorActive && focusSection === section && selectedIndex === (index || 0)
@@ -106,6 +111,7 @@ Panel {
     if (!cursorActive) { cursorActive = true; return }
     if (!ready) return
     switch (focusSection) {
+      case "url":
       case "transport": selectedIndex = Math.max(0, Math.min(2, selectedIndex + delta)); break
       case "position": seekRelative(delta * 5); break
       case "volume": service.setVolume(Math.max(0, Math.min(100, volume + delta * 5))); break
@@ -117,7 +123,11 @@ Panel {
   function activateCursor() {
     if (!ready) return
     switch (focusSection) {
-      case "url": urlField.forceActiveFocus(); urlField.selectAll(); break
+      case "url":
+        if (selectedIndex === 1) openHistory()
+        else if (selectedIndex === 2) submitUrl()
+        else { urlField.forceActiveFocus(); urlField.selectAll() }
+        break
       case "transport":
         if (selectedIndex === 0 && startButton.enabled) { running ? service.togglePause() : service.start() }
         else if (selectedIndex === 1 && stopButton.enabled) service.stop()
@@ -208,6 +218,25 @@ Panel {
     keyCatcher.forceActiveFocus()
   }
 
+  function openHistory() {
+    if (!ready || history.length === 0) return
+    setCursor("url", 1)
+    historyPopup.open()
+  }
+
+  function playHistory(index) {
+    var entry = history[index]
+    historyPopup.close()
+    if (!ready || !entry) return
+    urlField.text = entry.url
+    service.start(entry.url)
+    keyCatcher.forceActiveFocus()
+  }
+
+  function historyLabel(entry) {
+    return entry && entry.title !== "" ? entry.title : String(entry ? entry.url : "")
+  }
+
   function formatTime(secs) {
     var t = Math.max(0, Math.round(Number(secs) || 0))
     var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60
@@ -264,6 +293,7 @@ Panel {
         else if (t === "m") root.service.setMuted(!root.muted)
         else if (t === "s") root.service.stop()
         else if (t === "u" || t === "/") { urlField.forceActiveFocus(); urlField.selectAll() }
+        else if (t === "r") root.openHistory()
         else event.accepted = false
       }
 
@@ -337,19 +367,20 @@ Panel {
         }
 
         Row {
+          id: urlRow
           width: parent.width
           spacing: Style.space(6)
 
           TextField {
             id: urlField
-            width: parent.width - playButton.width - parent.spacing
+            width: parent.width - historyButton.width - playButton.width - parent.spacing * 2
             placeholderText: "YouTube URL or video id"
             foreground: root.fg
             font.family: root.fontFamily
             enabled: root.ready
             anchors.verticalCenter: parent.verticalCenter
-            hasCursor: !activeFocus && root.hasCursorOn("url")
-            onHoveredChanged: if (hovered) root.setCursor("url")
+            hasCursor: !activeFocus && root.hasCursorOn("url", 0)
+            onHoveredChanged: if (hovered) root.setCursor("url", 0)
 
             Keys.onPressed: function(event) {
               if (event.key === Qt.Key_Escape) {
@@ -363,6 +394,23 @@ Panel {
             }
           }
 
+          // History: the last ten videos that played, by title. Selecting
+          // one fills the field and starts it.
+          PanelActionButton {
+            id: historyButton
+            iconText: historyPopup.opened ? "󰅃" : "󰅀"
+            tooltipText: root.history.length ? "Recently played" : "No recently played videos yet"
+            foreground: root.fg
+            fontFamily: root.fontFamily
+            bordered: true
+            size: urlField.implicitHeight
+            enabled: root.ready && root.history.length > 0
+            hasCursor: root.hasCursorOn("url", 1)
+            onHovered: function(h) { if (h) root.setCursor("url", 1) }
+            anchors.verticalCenter: parent.verticalCenter
+            onClicked: historyPopup.opened ? historyPopup.close() : root.openHistory()
+          }
+
           PanelActionButton {
             id: playButton
             iconText: "󰐊"
@@ -372,8 +420,102 @@ Panel {
             bordered: true
             size: urlField.implicitHeight
             enabled: root.ready && urlField.text.trim() !== ""
+            hasCursor: root.hasCursorOn("url", 2)
+            onHovered: function(h) { if (h) root.setCursor("url", 2) }
             anchors.verticalCenter: parent.verticalCenter
             onClicked: root.submitUrl()
+          }
+
+          // Same chrome and keys as the kit's Dropdown popup, anchored under
+          // the whole row so long titles get the full panel width.
+          QQC.Popup {
+            id: historyPopup
+            x: 0
+            y: urlRow.height + Style.spacing.xxs
+            width: urlRow.width
+            readonly property var borderSpec: Border.localOrSurfaceSpec("popups", "border", Color.popups.border, Color.popups.border, Style.normalBorderWidth)
+            readonly property int rows: root.history.length
+            implicitHeight: rows * Style.spacing.popupRowHeight + Math.max(0, rows - 1) * Style.spacing.labelGap
+              + Style.spacing.xxs + Border.top(borderSpec) + Border.bottom(borderSpec)
+            padding: Style.spacing.hairline
+            leftPadding: Border.left(borderSpec) + Style.spacing.hairline
+            rightPadding: Border.right(borderSpec) + Style.spacing.hairline
+            topPadding: Border.top(borderSpec) + Style.spacing.hairline
+            bottomPadding: Border.bottom(borderSpec) + Style.spacing.hairline
+            modal: false
+            focus: true
+            closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutside
+
+            background: BorderSurface {
+              color: Color.popups.background
+              borderSpec: historyPopup.borderSpec
+              radius: Style.cornerRadius
+            }
+
+            onOpenedChanged: {
+              if (opened) {
+                historyList.currentIndex = 0
+                Qt.callLater(function() { historyList.forceActiveFocus() })
+              } else if (root.opened) {
+                Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+              }
+            }
+
+            contentItem: ListView {
+              id: historyList
+              spacing: Style.spacing.labelGap
+              implicitHeight: contentHeight
+              clip: true
+              boundsBehavior: Flickable.StopAtBounds
+              model: root.history
+              currentIndex: 0
+
+              Keys.priority: Keys.BeforeItem
+              Keys.onPressed: function(event) {
+                event.accepted = true
+                if (event.key === Qt.Key_Escape) historyPopup.close()
+                else if (event.key === Qt.Key_Down || event.text === "j")
+                  historyList.currentIndex = Math.min(root.history.length - 1, historyList.currentIndex + 1)
+                else if (event.key === Qt.Key_Up || event.text === "k")
+                  historyList.currentIndex = Math.max(0, historyList.currentIndex - 1)
+                else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
+                  root.playHistory(historyList.currentIndex)
+                else event.accepted = false
+              }
+
+              delegate: Rectangle {
+                required property var modelData
+                required property int index
+                width: historyList.width
+                height: Style.spacing.popupRowHeight
+                radius: Style.cornerRadius
+                color: index === historyList.currentIndex
+                  ? Style.hoverFillFor(root.fg, Color.accent)
+                  : "transparent"
+
+                Text {
+                  textFormat: Text.PlainText
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  anchors.leftMargin: Style.spacing.controlPaddingX
+                  anchors.rightMargin: Style.spacing.controlPaddingX
+                  text: root.historyLabel(modelData)
+                  color: index === historyList.currentIndex ? Style.hoverStateColor(root.fg, Color.accent) : root.fg
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  elide: Text.ElideRight
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onPositionChanged: historyList.currentIndex = parent.index
+                  onClicked: root.playHistory(parent.index)
+                }
+              }
+            }
           }
         }
 
@@ -647,7 +789,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           width: parent.width
-          text: "↑/↓ ←/→ navigate · enter select · h/l 5 s · j/k 60 s · p play/pause · m mute · s stop · u url · esc close"
+          text: "↑/↓ ←/→ navigate · enter select · h/l 5 s · j/k 60 s · p play/pause · m mute · s stop · u url · r recent · esc close"
           color: Qt.darker(root.fg, 1.7)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

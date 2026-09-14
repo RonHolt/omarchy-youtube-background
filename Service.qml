@@ -91,6 +91,17 @@ Item {
     // yt-dlp --cookies-from-browser spec, e.g. "brave+gnomekeyring:Default":
     // the browser's live session, decrypted on every resolve, nothing to export.
     readonly property string cookiesFromBrowser: typeof entry.cookiesFromBrowser === "string" ? entry.cookiesFromBrowser.trim() : ""
+    // Most recently played first: [{ url, title }, ...], capped at historyLimit.
+    readonly property var history: {
+      if (!Array.isArray(entry.history)) return []
+      var out = []
+      for (var i = 0; i < entry.history.length && out.length < root.historyLimit; i++) {
+        var h = entry.history[i]
+        if (!h || typeof h.url !== "string" || h.url === "") continue
+        out.push({ url: h.url, title: typeof h.title === "string" ? h.title : "" })
+      }
+      return out
+    }
   }
 
   // updateEntryInline replaces the whole entry, so merge over current values.
@@ -155,6 +166,42 @@ Item {
 
   readonly property var qualityOptions: ["best", "2160", "1440", "1080", "720", "480"]
   readonly property var codecOptions: ["h264", "vp9", "any"]
+
+  // The last historyLimit videos that actually started, newest first, for
+  // the panel's history dropdown. Titles come from the yt-dlp probe and are
+  // refreshed from mpv's media-title once the file loads.
+  readonly property int historyLimit: 10
+  readonly property var history: settings.history
+
+  // The new history array with url moved (or added) to the front, or null
+  // when that changes nothing, so a replayed video costs no settings write.
+  function historyWith(url, title) {
+    var next = [{ url: url, title: String(title || "") }]
+    var old = settings.history
+    for (var i = 0; i < old.length && next.length < historyLimit; i++)
+      if (old[i].url !== url) next.push(old[i])
+    return JSON.stringify(next) === JSON.stringify(old) ? null : next
+  }
+
+  // Update the active entry's title once mpv reports one. Only touches the
+  // entry that is already at the front, so playback order is unchanged.
+  function refreshHistoryTitle(url, title) {
+    var old = settings.history
+    if (!url || !title || !old.length || old[0].url !== url || old[0].title === title) return
+    // mpv's placeholder title for an unresolved URL is the URL's last segment.
+    if (url.slice(-title.length) === title) return
+    persist("history", historyWith(url, title))
+  }
+
+  function clearHistory() {
+    persist("history", [])
+  }
+
+  function fallbackTitle(url) {
+    var s = String(url || "")
+    if (/^\//.test(s)) return s.split("/").pop()
+    return s
+  }
 
   // yt-dlp's default order picks AV1 first, which older GPUs cannot decode in
   // hardware; a 720p60 AV1 wallpaper then eats half a core. Prefer H.264,
@@ -253,8 +300,14 @@ Item {
   // socket path), then spawn. Never runs plugin-supplied text through a shell.
   function launch(url) {
     pendingUrl = url
-    if (url !== settings.url || !settings.playing)
-      persistMany({ url: url, playing: true })
+    var changes = {}
+    if (url !== settings.url || !settings.playing) {
+      changes.url = url
+      changes.playing = true
+    }
+    var history = historyWith(url, title || fallbackTitle(url))
+    if (history) changes.history = history
+    if (Object.keys(changes).length) persistMany(changes)
     if (mpvProc.running) {
       // Same process, new file: no flicker, no re-spawn.
       activeUrl = url
@@ -697,7 +750,12 @@ Item {
       if (msg.name === "pause") paused = msg.data === true
       else if (msg.name === "mute") muted = msg.data === true
       else if (msg.name === "volume" && isFinite(Number(msg.data))) volume = Number(msg.data)
-      else if (msg.name === "media-title" && typeof msg.data === "string" && msg.data !== "") title = msg.data
+      else if (msg.name === "media-title" && typeof msg.data === "string" && msg.data !== "") {
+        title = msg.data
+        // Before the file opens mpv reports the URL's tail ("watch?v=...")
+        // as its title; only a title seen after load is worth keeping.
+        if (loaded) refreshHistoryTitle(activeUrl, title)
+      }
       else if (msg.name === "duration") duration = isFinite(Number(msg.data)) && Number(msg.data) > 0 ? Number(msg.data) : 0
       else if (msg.name === "seekable") seekable = msg.data === true
     } else if (msg.request_id === 1001) {
@@ -708,6 +766,8 @@ Item {
       retries = 0
       position = 0
       pollPosition()
+      // A local file was recorded under its basename; mpv knows better now.
+      refreshHistoryTitle(activeUrl, title)
     } else if (msg.event === "end-file") {
       position = 0
       duration = 0
@@ -825,6 +885,13 @@ Item {
     function cookies(value: string): string {
       if (value === "get") return root.cookies
       return root.setCookies(value)
+    }
+
+    // history get | history clear
+    function history(value: string): string {
+      if (value === "clear") { root.clearHistory(); return "ok" }
+      if (value !== "get") return "usage: history get|clear"
+      return JSON.stringify(root.history)
     }
 
     function status(): string {
