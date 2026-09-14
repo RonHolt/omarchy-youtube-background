@@ -109,7 +109,6 @@ IPC verbs write the common ones.
 | `volume` | `50` | 0 to 100 |
 | `quality` | `"1080"` | Max height, or `"best"` |
 | `codec` | `"h264"` | Preferred codec: `h264`, `vp9`, `any` |
-| `autoPause` | `true` | mpvpaper `-p`: pause while windows fully cover the desktop |
 | `fill` | `true` | Crop to fill (`panscan=1.0`) instead of letterboxing |
 | `outputs` | `"ALL"` | Monitor name, or `ALL` |
 | `layer` | `"bottom"` | Layer-shell layer. `background` puts it under the wallpaper renderer, so leave it |
@@ -186,8 +185,7 @@ stream:
 | AV1 | software | 45 to 50 percent of one core |
 | H.264 | vaapi | about 7 percent |
 
-Lower `quality` to spend less. `autoPause` only helps when the desktop is
-truly hidden, which gaps and transparency make rare.
+Lower `quality` to spend less.
 
 ## How it works
 

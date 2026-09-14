@@ -80,7 +80,6 @@ Item {
     readonly property real volume: isFinite(Number(entry.volume)) ? Math.max(0, Math.min(100, Number(entry.volume))) : 50
     readonly property string quality: typeof entry.quality === "string" && entry.quality !== "" ? entry.quality : "1080"
     readonly property string codec: ["h264", "vp9", "any"].indexOf(entry.codec) !== -1 ? entry.codec : "h264"
-    readonly property bool autoPause: entry.autoPause !== false
     readonly property bool fill: entry.fill !== false
     readonly property string outputs: typeof entry.outputs === "string" && entry.outputs !== "" ? entry.outputs : "ALL"
     readonly property string layer: typeof entry.layer === "string" && entry.layer !== "" ? entry.layer : "bottom"
@@ -119,7 +118,6 @@ Item {
   readonly property string url: settings.url
   readonly property string quality: settings.quality
   readonly property string codec: settings.codec
-  readonly property bool autoPause: settings.autoPause
   readonly property bool fill: settings.fill
   readonly property string cookiesFile: settings.cookiesFile
   readonly property string cookiesFromBrowser: settings.cookiesFromBrowser
@@ -221,7 +219,6 @@ Item {
     if (settings.extraOptions.trim() !== "") opts.push(settings.extraOptions.trim())
 
     var cmd = ["mpvpaper", "-l", settings.layer]
-    if (settings.autoPause) cmd.push("-p")
     cmd.push("-o", opts.join(" "))
     cmd.push(settings.outputs, url)
     return cmd
@@ -360,11 +357,6 @@ Item {
     persist("codec", c)
     if (running) restart()
     return true
-  }
-
-  function setAutoPause(value) {
-    persist("autoPause", !!value)
-    if (running) restart()
   }
 
   function setFill(value) {
@@ -851,7 +843,6 @@ Item {
         seekable: root.seekable,
         quality: root.quality,
         codec: root.codec,
-        autoPause: root.autoPause,
         cookiesFile: root.cookiesFile,
         cookiesFromBrowser: root.cookiesFromBrowser,
         error: root.lastError

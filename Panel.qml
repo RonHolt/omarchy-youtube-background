@@ -454,17 +454,6 @@ Panel {
 
         Toggle {
           width: parent.width
-          label: "Pause when hidden"
-          description: "Let mpvpaper pause while windows fully cover the desktop"
-          checked: root.ready && root.service.autoPause
-          foreground: root.fg
-          fontFamily: root.fontFamily
-          enabled: root.ready
-          onClicked: root.service.setAutoPause(!root.service.autoPause)
-        }
-
-        Toggle {
-          width: parent.width
           label: "Fill the screen"
           description: "Crop instead of letterboxing when aspect ratios differ"
           checked: root.ready && root.service.fill
