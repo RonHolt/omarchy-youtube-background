@@ -133,7 +133,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(360))
-    contentHeight: panel.fittedContentHeight(content.implicitHeight, Style.space(760))
+    contentHeight: panel.fittedContentHeight(content.implicitHeight)
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -512,7 +512,7 @@ Panel {
           Text {
             textFormat: Text.PlainText
             width: parent.width
-            text: "For videos where YouTube says \"Sign in to confirm you're not a bot\". A browser spec uses your live login (see README); a path is a Netscape cookies.txt."
+            text: "For videos gated by \"Sign in to confirm you're not a bot\": a browser spec (see README) or a Netscape cookies.txt path."
             color: Qt.darker(root.fg, 1.7)
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -523,7 +523,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           width: parent.width
-          text: "Keys: space pause · ←/→ skip 5 s · ↑/↓ skip 60 s · m mute · s stop · u edit URL · esc close"
+          text: "space pause · ←/→ 5 s · ↑/↓ 60 s · m mute · s stop · u url · esc close"
           color: Qt.darker(root.fg, 1.7)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
