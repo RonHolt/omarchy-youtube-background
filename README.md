@@ -49,10 +49,25 @@ id) and press Enter or the play button.
 | Middle click | Pause / resume |
 | Right click | Start / stop the saved video |
 
-Inside the panel, `space` pauses, `m` mutes, `s` stops, `u` focuses the URL
-field, `Esc` closes. `Left`/`Right` (or `h`/`l`) skip 5 seconds, `Up`/`Down`
-(or `k`/`j`) skip 60 seconds, and the position slider scrubs; both are hidden
-for live streams, which mpv reports as not seekable.
+Inside the panel, the arrow keys walk a cursor over every row, so all of it
+works without a mouse:
+
+| Key | Does |
+| --- | --- |
+| `Up` / `Down` | Move the cursor between rows |
+| `Left` / `Right` | Act on the row: pick a transport button, nudge a slider, step a dropdown |
+| `Enter` / `Space` | Activate the row: press the button, edit the field, open the dropdown, flip the toggle. With no cursor showing: play / pause |
+| `p` | Play / pause / resume |
+| `s` | Stop |
+| `m` | Mute / unmute |
+| `u` or `/` | Edit the URL |
+| `h` / `l` | Skip back / forward 5 seconds |
+| `j` / `k` | Skip back / forward 60 seconds |
+| `Tab` / `Shift+Tab` | Next / previous bar panel |
+| `Esc` | Leave a field or dropdown, otherwise close the panel |
+
+Hovering with the mouse moves the same cursor. Skipping and the position
+slider are hidden for live streams, which mpv reports as not seekable.
 
 The video starts muted at 50 percent volume. Whatever was playing when you log
 out resumes at the next login.
