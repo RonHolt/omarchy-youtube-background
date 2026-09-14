@@ -7,7 +7,7 @@ import qs.Ui
 // starts/stops the saved video.
 BarWidget {
   id: root
-  moduleName: "ron.youtube-background"
+  moduleName: "ronholt.youtube-background"
 
   readonly property var service: bar && bar.shell && typeof bar.shell.serviceFor === "function"
     ? bar.shell.serviceFor(root.moduleName) : null

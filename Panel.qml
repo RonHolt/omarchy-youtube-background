@@ -7,7 +7,7 @@ import qs.Ui
 // quality.
 Panel {
   id: root
-  moduleName: "ron.youtube-background"
+  moduleName: "ronholt.youtube-background"
   manageIpc: false
 
   property var anchorItem: null

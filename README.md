@@ -24,15 +24,15 @@ omarchy pkg add yt-dlp
 
 ```bash
 omarchy plugin add https://github.com/RonHolt/omarchy-youtube-background.git
-omarchy plugin enable ron.youtube-background --section right
+omarchy plugin enable ronholt.youtube-background --section right
 ```
 
 Or by hand:
 
 ```bash
-git clone https://github.com/RonHolt/omarchy-youtube-background.git ~/.config/omarchy/plugins/ron.youtube-background
+git clone https://github.com/RonHolt/omarchy-youtube-background.git ~/.config/omarchy/plugins/ronholt.youtube-background
 omarchy-shell shell rescanPlugins
-omarchy plugin enable ron.youtube-background --section right
+omarchy plugin enable ronholt.youtube-background --section right
 ```
 
 Plugins run unsandboxed inside the shell process, so read the code before
@@ -243,7 +243,7 @@ Lower `quality` to spend less.
 
 ```bash
 omarchy-shell youtube-background stop
-omarchy plugin remove ron.youtube-background
+omarchy plugin remove ronholt.youtube-background
 ```
 
 The plugin writes only its own entry in `~/.config/omarchy/shell.json` and
@@ -259,7 +259,7 @@ each edit:
 
 ```bash
 git clone https://github.com/RonHolt/omarchy-youtube-background.git ~/omarchy-youtube-background
-ln -s ~/omarchy-youtube-background ~/.config/omarchy/plugins/ron.youtube-background
+ln -s ~/omarchy-youtube-background ~/.config/omarchy/plugins/ronholt.youtube-background
 omarchy plugin validate ~/omarchy-youtube-background
 omarchy restart shell                                  # after any edit through a symlink
 omarchy-shell youtube-background status                # JSON incl. ipc and probing flags

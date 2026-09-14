@@ -22,7 +22,7 @@ Item {
   property var manifest
 
   readonly property string pluginId:
-    manifest && manifest.id ? String(manifest.id) : "ron.youtube-background"
+    manifest && manifest.id ? String(manifest.id) : "ronholt.youtube-background"
 
   readonly property string home: Quickshell.env("HOME")
   readonly property string runtimeDir: {
