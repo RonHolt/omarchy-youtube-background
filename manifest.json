@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "ron.youtube-background",
+  "name": "YouTube Background",
+  "version": "0.1.0",
+  "author": "Ron Holt",
+  "license": "MIT",
+  "description": "Play a YouTube video (or any mpv-playable URL) as a live desktop background.",
+  "kinds": ["service", "bar-widget"],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "YouTube Background",
+    "description": "Pick, play, pause and mute a video wallpaper",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

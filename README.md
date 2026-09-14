@@ -1,0 +1,215 @@
+# YouTube Background
+
+Play a YouTube video (or anything mpv and yt-dlp can open) as a live desktop
+background on Omarchy. The video draws above the wallpaper and below every
+window, clicks pass straight through it, and the bar gets a YouTube glyph with a
+popout for picking the video, pausing, muting and setting quality.
+
+Playback is done by [mpvpaper](https://github.com/GhostNaN/mpvpaper), a
+layer-shell wrapper around mpv. The plugin owns that process, talks to mpv over
+its JSON IPC socket, and keeps its settings on the plugin's entry in
+`~/.config/omarchy/shell.json`.
+
+## Requirements
+
+- Omarchy 4 with shell plugin support
+- `mpvpaper` (AUR) and `yt-dlp`
+
+```bash
+omarchy pkg aur add mpvpaper
+omarchy pkg add yt-dlp
+```
+
+## Install
+
+```bash
+omarchy plugin add https://github.com/RonHolt/omarchy-youtube-background.git
+omarchy plugin enable ron.youtube-background --section right
+```
+
+Or by hand:
+
+```bash
+git clone https://github.com/RonHolt/omarchy-youtube-background.git ~/.config/omarchy/plugins/ron.youtube-background
+omarchy-shell shell rescanPlugins
+omarchy plugin enable ron.youtube-background --section right
+```
+
+Plugins run unsandboxed inside the shell process, so read the code before
+enabling it.
+
+## Use
+
+Click the YouTube glyph in the bar. Paste a URL (or a bare 11-character video
+id) and press Enter or the play button.
+
+| In the bar | Does |
+| --- | --- |
+| Left click | Open the panel |
+| Middle click | Pause / resume |
+| Right click | Start / stop the saved video |
+
+Inside the panel, `space` pauses, `m` mutes, `s` stops, `u` focuses the URL
+field, `Esc` closes.
+
+The video starts muted at 50 percent volume. Whatever was playing when you log
+out resumes at the next login.
+
+## Command line
+
+Every control is also an IPC verb, handy for keybindings and the Omarchy menu.
+Each prints the resulting value.
+
+```bash
+omarchy-shell youtube-background play "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+omarchy-shell youtube-background play ""            # replay the saved URL
+omarchy-shell youtube-background stop
+omarchy-shell youtube-background toggle             # start or stop
+omarchy-shell youtube-background pause toggle       # get|true|false|toggle
+omarchy-shell youtube-background mute toggle        # get|true|false|toggle
+omarchy-shell youtube-background volume 30          # get|0-100
+omarchy-shell youtube-background quality 1440       # get|best|2160|1440|1080|720|480
+omarchy-shell youtube-background codec h264         # get|h264|vp9|any
+omarchy-shell youtube-background url get
+omarchy-shell youtube-background cookies ~/cookies.txt   # get|<path>|"" to clear
+omarchy-shell youtube-background status             # JSON
+```
+
+Changing the URL while playing swaps the file inside the running mpv, so there
+is no flash of wallpaper. Changing quality or codec restarts mpvpaper.
+
+Example keybinding in `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + SHIFT + Y", "Toggle video background", "omarchy-shell youtube-background toggle")
+```
+
+Example rows for `~/.config/omarchy/extensions/omarchy-menu.jsonc`:
+
+```jsonc
+"style.video-bg": {"icon": "󰗃", "label": "Video Background"},
+"style.video-bg.toggle": {"icon": "󰐊", "label": "Start / Stop", "action": "omarchy-shell youtube-background toggle"},
+"style.video-bg.pause": {"icon": "󰏤", "label": "Pause / Resume", "action": "omarchy-shell youtube-background pause toggle"},
+"style.video-bg.mute": {"icon": "󰝟", "label": "Mute", "checked": "[[ \"$(omarchy-shell youtube-background mute get)\" == \"true\" ]]", "action": "omarchy-shell youtube-background mute toggle"}
+```
+
+## Settings
+
+All on the plugin's entry in `shell.json`, editable by hand. The panel and
+IPC verbs write the common ones.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `url` | | Video URL |
+| `playing` | `false` | Resume at login |
+| `muted` | `true` | |
+| `volume` | `50` | 0 to 100 |
+| `quality` | `"1080"` | Max height, or `"best"` |
+| `codec` | `"h264"` | Preferred codec: `h264`, `vp9`, `any` |
+| `autoPause` | `true` | mpvpaper `-p`: pause while windows fully cover the desktop |
+| `fill` | `true` | Crop to fill (`panscan=1.0`) instead of letterboxing |
+| `outputs` | `"ALL"` | Monitor name, or `ALL` |
+| `layer` | `"bottom"` | Layer-shell layer. `background` puts it under the wallpaper renderer, so leave it |
+| `hwdec` | `"auto-safe"` | mpv `hwdec` value |
+| `extraOptions` | | Extra mpv options, space separated, `key=value` form |
+| `cookiesFile` | | Netscape `cookies.txt` passed to yt-dlp, see below |
+
+Paths with spaces do not survive mpvpaper's option parsing, so keep the
+cookies file somewhere plain like `~/.config/yt-dlp/cookies.txt`.
+
+## When a video will not load
+
+The panel shows yt-dlp's own reason instead of spinning. The common one:
+
+> Sign in to confirm you're not a bot
+
+YouTube serves that to anonymous clients for some videos (long mixes and
+livestream re-uploads are frequent targets) even when other videos work fine
+from the same machine. yt-dlp needs a logged-in session for those:
+
+1. Install a "Get cookies.txt" style extension in your browser and export
+   youtube.com cookies in Netscape format. Chromium-based browsers on Linux
+   encrypt their cookie store with the keyring, which is why yt-dlp's
+   `--cookies-from-browser` usually cannot read it directly.
+2. Save the file somewhere without spaces in the path.
+3. Paste the path into "Cookies file" in the panel, or run
+   `omarchy-shell youtube-background cookies /path/to/cookies.txt`.
+
+Use a throwaway Google account if you would rather not hand your main
+session to a background process. See the
+[yt-dlp wiki](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
+for the details.
+
+## Performance
+
+yt-dlp ranks AV1 first, and most GPUs before 2020 cannot decode AV1 in
+hardware. That is why `codec` defaults to H.264, which gets VA-API/NVDEC on
+everything. Measured on an i7-8565U (UHD 620) with the Big Buck Bunny 720p60
+stream:
+
+| codec | decode | mpvpaper CPU |
+| --- | --- | --- |
+| AV1 | software | 45 to 50 percent of one core |
+| H.264 | vaapi | about 7 percent |
+
+Lower `quality` to spend less. `autoPause` only helps when the desktop is
+truly hidden, which gaps and transparency make rare.
+
+## How it works
+
+- `Service.qml` first resolves every network URL with `yt-dlp --print`
+  (title, picked codec, height, fps). Only a URL that resolves is handed to
+  mpvpaper; a failure is shown in the panel with yt-dlp's message.
+- It then spawns `mpvpaper -l bottom -p -o "<mpv options>" ALL <url>` and
+  connects to mpv's `input-ipc-server` socket in `$XDG_RUNTIME_DIR` for
+  pause/mute/volume/title and error events.
+- Stream URLs from YouTube expire after a few hours. On a playback error the
+  service re-resolves through yt-dlp with backoff (5s, 10s, ... up to 2 min,
+  six attempts) and reports the reason if it keeps failing.
+- Stopping sends `quit` over IPC, then SIGTERM, then SIGKILL. mpvpaper 1.9
+  deadlocks in its exit path (and ignores SIGTERM) when its file never loaded,
+  which is the state a bad URL used to leave it in. A watchdog also kills a
+  mpvpaper whose mpv never opens its socket within 30 seconds.
+- On (re)start it kills any orphaned mpvpaper matched by that socket path, so a
+  crashed shell never leaves an uncontrolled video behind.
+- `BarWidget.qml` + `Panel.qml` follow the standard Omarchy bar-widget pattern
+  and reach the service through `bar.shell.serviceFor(<own id>)`.
+
+## Limitations
+
+- The lock screen shows the wallpaper, not the video.
+- Omarchy's background switcher and theme changes leave the video alone; stop
+  it to see your wallpaper again.
+- Editing `Service.qml` needs `omarchy restart shell`; the shell's hot reload
+  re-instantiates a service from cached code. Widget and panel edits hot-reload
+  fine.
+
+## Uninstall
+
+```bash
+omarchy-shell youtube-background stop
+omarchy plugin remove ron.youtube-background
+```
+
+The plugin writes only its own entry in `~/.config/omarchy/shell.json` and
+the mpv socket in `$XDG_RUNTIME_DIR`; removing it leaves nothing else behind.
+Packages you installed for it (`mpvpaper`, `yt-dlp`) stay until you remove
+them.
+
+## Development
+
+Clone the repo anywhere and symlink it into the plugin directory; the shell
+hot-reloads on save (widget and panel only, see Limitations):
+
+```bash
+git clone https://github.com/RonHolt/omarchy-youtube-background.git ~/omarchy-youtube-background
+ln -s ~/omarchy-youtube-background ~/.config/omarchy/plugins/ron.youtube-background
+omarchy plugin validate ~/omarchy-youtube-background
+omarchy restart shell                                  # after Service.qml edits
+omarchy-shell youtube-background status                # JSON incl. ipc and probing flags
+qs log -p /usr/share/omarchy/shell --tail 100 | grep youtube-background
+```
+
+## License
+
+MIT
