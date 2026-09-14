@@ -313,6 +313,8 @@ Item {
       activeUrl = url
       loaded = false
       ipcSend(["loadfile", url, "replace"])
+      // mpv keeps "pause" across loadfile; a freshly chosen video always plays.
+      if (paused) setPaused(false)
       return
     }
     if (!cleanupProc.running) cleanupProc.running = true
