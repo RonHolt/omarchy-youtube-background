@@ -89,6 +89,9 @@ Item {
     // Netscape cookies.txt handed to yt-dlp, for videos YouTube gates behind
     // "Sign in to confirm you're not a bot" or an age check.
     readonly property string cookiesFile: typeof entry.cookiesFile === "string" ? entry.cookiesFile.trim() : ""
+    // yt-dlp --cookies-from-browser spec, e.g. "brave+gnomekeyring:Default":
+    // the browser's live session, decrypted on every resolve, nothing to export.
+    readonly property string cookiesFromBrowser: typeof entry.cookiesFromBrowser === "string" ? entry.cookiesFromBrowser.trim() : ""
   }
 
   // updateEntryInline replaces the whole entry, so merge over current values.
@@ -119,6 +122,9 @@ Item {
   readonly property bool autoPause: settings.autoPause
   readonly property bool fill: settings.fill
   readonly property string cookiesFile: settings.cookiesFile
+  readonly property string cookiesFromBrowser: settings.cookiesFromBrowser
+  // What the panel shows in its single cookies field.
+  readonly property string cookies: settings.cookiesFile !== "" ? settings.cookiesFile : settings.cookiesFromBrowser
 
   // Mirrored from mpv over IPC while it runs; fall back to persisted values.
   property bool paused: false
@@ -203,7 +209,10 @@ Item {
       "msg-level=all=warn"
     ]
     if (settings.fill) opts.push("panscan=1.0")
-    if (settings.cookiesFile !== "") opts.push("ytdl-raw-options=cookies=" + settings.cookiesFile)
+    var raw = []
+    if (settings.cookiesFile !== "") raw.push("cookies=" + settings.cookiesFile)
+    if (settings.cookiesFromBrowser !== "") raw.push("cookies-from-browser=" + settings.cookiesFromBrowser)
+    if (raw.length) opts.push('ytdl-raw-options="' + raw.join(",").replace(/"/g, "") + '"')
     if (settings.extraOptions.trim() !== "") opts.push(settings.extraOptions.trim())
 
     var cmd = ["mpvpaper", "-l", settings.layer]
@@ -337,13 +346,22 @@ Item {
     ipcSend(["set_property", "panscan", value ? 1.0 : 0.0])
   }
 
-  // Empty string clears it. mpv reads the file at spawn, so a running video
-  // restarts; the next probe picks it up either way.
-  function setCookiesFile(value) {
-    var p = String(value || "").trim().replace(/^~(?=\/|$)/, home)
-    persist("cookiesFile", p)
+  // One entry point for both cookie sources: a path (starts with / or ~)
+  // sets cookiesFile, anything else is a --cookies-from-browser spec such as
+  // "brave+gnomekeyring:Default", and "" clears both. mpv reads them at
+  // spawn, so a running video restarts; the probe picks them up either way.
+  function setCookies(value) {
+    var v = String(value || "").trim()
+    var changes = { cookiesFile: "", cookiesFromBrowser: "" }
+    if (/^[~\/]/.test(v)) changes.cookiesFile = v.replace(/^~(?=\/|$)/, home)
+    else if (v !== "") changes.cookiesFromBrowser = v
+    persistMany(changes)
     if (running) restart()
-    return p
+    return changes.cookiesFile || changes.cookiesFromBrowser
+  }
+
+  function setCookiesFile(value) {
+    return setCookies(String(value || "").trim() === "" ? "" : value)
   }
 
   function restart() {
@@ -374,10 +392,11 @@ Item {
     // back so one stdout stream carries the whole result in order.
     var script = 'out=$(timeout 45 yt-dlp --no-playlist --no-warnings -f "$2" '
       + '--print "T:%(title)s" --print "F:%(vcodec)s|%(height)s|%(fps)s" '
-      + '${3:+--cookies "$3"} -- "$1" 2>&1); rc=$?; '
+      + '${3:+--cookies "$3"} ${4:+--cookies-from-browser "$4"} -- "$1" 2>&1); rc=$?; '
       + 'printf "R:%s\\nU:%s\\n%s\\n" "$rc" "$1" "$out"'
     probeProc.command = ["bash", "-c", script, "yt-dlp-probe", target,
-                         ytdlFormat(settings.quality, settings.codec), settings.cookiesFile]
+                         ytdlFormat(settings.quality, settings.codec),
+                         settings.cookiesFile, settings.cookiesFromBrowser]
     probeProc.running = true
   }
 
@@ -448,7 +467,9 @@ Item {
     // yt-dlp appends two sentences of wiki links; keep the reason.
     s = s.split(/\.?\s+Use --cookies/)[0].split(/\s+See\s+https?:/)[0].trim()
     if (/not a bot|sign in|login required|age/i.test(s))
-      s += ". YouTube wants browser cookies: set a cookies.txt in Options"
+      s += ". YouTube wants a signed-in session: set Cookies in Options"
+    else if (/could not be decrypted|no key found|secretstorage|keyring/i.test(err))
+      s = "Could not read browser cookies: " + s
     return s || "yt-dlp failed (exit " + rc + ")"
   }
 
@@ -754,10 +775,10 @@ Item {
       return root.url
     }
 
-    // cookies get | cookies /path/to/cookies.txt | cookies ""  (clear)
+    // cookies get | cookies /path/to/cookies.txt | cookies brave+gnomekeyring:Default | cookies ""
     function cookies(value: string): string {
-      if (value === "get") return root.cookiesFile
-      return root.setCookiesFile(value)
+      if (value === "get") return root.cookies
+      return root.setCookies(value)
     }
 
     function status(): string {
@@ -775,6 +796,7 @@ Item {
         codec: root.codec,
         autoPause: root.autoPause,
         cookiesFile: root.cookiesFile,
+        cookiesFromBrowser: root.cookiesFromBrowser,
         error: root.lastError
       })
     }

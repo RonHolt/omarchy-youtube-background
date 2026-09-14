@@ -27,7 +27,7 @@ Panel {
   readonly property string savedUrl: ready ? service.url : ""
   readonly property string lastError: ready ? service.lastError : ""
   readonly property string stream: ready ? service.stream : ""
-  readonly property string cookiesFile: ready ? service.cookiesFile : ""
+  readonly property string cookiesFile: ready ? service.cookies : ""
 
   readonly property string statusLabel: {
     if (!ready) return "Service not loaded"
@@ -99,7 +99,7 @@ Panel {
     if (!ready) return
     var value = cookiesField.text.trim()
     if (value === root.cookiesFile) return
-    service.setCookiesFile(value)
+    service.setCookies(value)
   }
 
   function submitUrl() {
@@ -408,7 +408,7 @@ Panel {
           Text {
             textFormat: Text.PlainText
             width: parent.width
-            text: "Cookies file (optional)"
+            text: "Cookies (optional)"
             color: root.fg
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -417,7 +417,7 @@ Panel {
           TextField {
             id: cookiesField
             width: parent.width
-            placeholderText: "~/cookies.txt for videos that demand a sign-in"
+            placeholderText: "brave+gnomekeyring:Default  or  ~/cookies.txt"
             foreground: root.fg
             font.family: root.fontFamily
             enabled: root.ready
@@ -439,7 +439,7 @@ Panel {
           Text {
             textFormat: Text.PlainText
             width: parent.width
-            text: "Export from your browser with a cookies.txt extension. Needed when YouTube says \"Sign in to confirm you're not a bot\"."
+            text: "For videos where YouTube says \"Sign in to confirm you're not a bot\". A browser spec uses your live login (see README); a path is a Netscape cookies.txt."
             color: Qt.darker(root.fg, 1.7)
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption

@@ -71,7 +71,7 @@ omarchy-shell youtube-background volume 30          # get|0-100
 omarchy-shell youtube-background quality 1440       # get|best|2160|1440|1080|720|480
 omarchy-shell youtube-background codec h264         # get|h264|vp9|any
 omarchy-shell youtube-background url get
-omarchy-shell youtube-background cookies ~/cookies.txt   # get|<path>|"" to clear
+omarchy-shell youtube-background cookies brave+gnomekeyring:Default   # get|<browser spec>|<path>|"" to clear
 omarchy-shell youtube-background status             # JSON
 ```
 
@@ -112,10 +112,8 @@ IPC verbs write the common ones.
 | `layer` | `"bottom"` | Layer-shell layer. `background` puts it under the wallpaper renderer, so leave it |
 | `hwdec` | `"auto-safe"` | mpv `hwdec` value |
 | `extraOptions` | | Extra mpv options, space separated, `key=value` form |
+| `cookiesFromBrowser` | | yt-dlp `--cookies-from-browser` spec, e.g. `brave+gnomekeyring:Default`, see below |
 | `cookiesFile` | | Netscape `cookies.txt` passed to yt-dlp, see below |
-
-Paths with spaces do not survive mpvpaper's option parsing, so keep the
-cookies file somewhere plain like `~/.config/yt-dlp/cookies.txt`.
 
 ## When a video will not load
 
@@ -125,18 +123,51 @@ The panel shows yt-dlp's own reason instead of spinning. The common one:
 
 YouTube serves that to anonymous clients for some videos (long mixes and
 livestream re-uploads are frequent targets) even when other videos work fine
-from the same machine. yt-dlp needs a logged-in session for those:
+from the same machine. yt-dlp needs a signed-in YouTube session for those.
+There is no OAuth or device-code login any more (Google shut yt-dlp's down),
+so the session comes from a browser, in one of two ways.
 
-1. Install a "Get cookies.txt" style extension in your browser and export
-   youtube.com cookies in Netscape format. Chromium-based browsers on Linux
-   encrypt their cookie store with the keyring, which is why yt-dlp's
-   `--cookies-from-browser` usually cannot read it directly.
-2. Save the file somewhere without spaces in the path.
-3. Paste the path into "Cookies file" in the panel, or run
-   `omarchy-shell youtube-background cookies /path/to/cookies.txt`.
+### Use the browser's live login (recommended)
 
-Use a throwaway Google account if you would rather not hand your main
-session to a background process. See the
+yt-dlp can read a browser's cookie store directly, so as long as you are
+signed into YouTube in that browser the wallpaper is too, with nothing to
+export or refresh. Put a `--cookies-from-browser` spec in the panel's
+"Cookies" field or run:
+
+```bash
+omarchy-shell youtube-background cookies brave+gnomekeyring:Default
+```
+
+The spec is `browser[+keyring][:profile]`. On Omarchy the pieces are:
+
+- browser: `brave`, `chromium`, `chrome`, `firefox`, `vivaldi`, `edge`, ...
+- keyring: Chromium-family browsers encrypt cookies with a key kept in the
+  desktop keyring. Omarchy runs GNOME Keyring, so use `+gnomekeyring`, which
+  needs the `python-secretstorage` package (`omarchy pkg add python-secretstorage`).
+  `+basictext` is for browsers running without any keyring; `+kwallet` will
+  pop a KWallet password dialog you do not want. Firefox needs no keyring part.
+- profile: the directory name under the browser's config dir (`Default`,
+  `Profile 2`), or a full path. Pick the profile that is signed into YouTube.
+
+Check a spec before trusting it to the wallpaper:
+
+```bash
+yt-dlp --cookies-from-browser brave+gnomekeyring:Default --skip-download --print title <url>
+```
+
+The browser can stay open; yt-dlp copies the cookie DB before reading it.
+
+### Or a cookies.txt file
+
+Export youtube.com cookies in Netscape format with a "Get cookies.txt"
+extension, save the file somewhere without spaces in the path, and set that
+path in the same field (anything starting with `/` or `~` is treated as a
+file). Cookies in a file go stale when YouTube rotates the session; the
+browser spec does not.
+
+Either way the plugin now has a live login to your Google account, so use a
+throwaway account if you would rather not hand your main session to a
+background process. See the
 [yt-dlp wiki](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
 for the details.
 
@@ -159,7 +190,9 @@ truly hidden, which gaps and transparency make rare.
 
 - `Service.qml` first resolves every network URL with `yt-dlp --print`
   (title, picked codec, height, fps). Only a URL that resolves is handed to
-  mpvpaper; a failure is shown in the panel with yt-dlp's message.
+  mpvpaper; a failure is shown in the panel with yt-dlp's message. The same
+  cookie arguments go to mpv as `ytdl-raw-options`, so its own yt-dlp call
+  at load time (and on every retry) sees the same session.
 - It then spawns `mpvpaper -l bottom -p -o "<mpv options>" ALL <url>` and
   connects to mpv's `input-ipc-server` socket in `$XDG_RUNTIME_DIR` for
   pause/mute/volume/title and error events.
