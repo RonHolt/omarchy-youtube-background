@@ -131,6 +131,11 @@ Item {
   property bool muted: settings.muted
   property real volume: settings.volume
   property string title: ""
+  // Playback position in seconds, polled at 1 Hz while mpv is up; duration
+  // and seekable come from observe_property. A live stream has no duration.
+  property real position: 0
+  property real duration: 0
+  property bool seekable: false
   // Human readable stream picked by yt-dlp, e.g. "H.264 1080p 25fps".
   property string stream: ""
   property string activeUrl: ""
@@ -291,7 +296,8 @@ Item {
 
   function ipcSend(command) {
     if (!ipcConnected) return false
-    ipc.write(JSON.stringify({ command: command }) + "\n")
+    var msg = Array.isArray(command) ? { command: command } : command
+    ipc.write(JSON.stringify(msg) + "\n")
     ipc.flush()
     return true
   }
@@ -303,6 +309,26 @@ Item {
 
   function togglePause() {
     setPaused(!paused)
+  }
+
+  // seek(secs, "relative" | "absolute"). Refused for live streams and
+  // before the file has loaded. The optimistic position keeps the slider from
+  // snapping back until the next poll answers.
+  function seek(secs, mode) {
+    var n = Number(secs)
+    if (!isFinite(n) || !running || !loaded || !seekable) return false
+    mode = mode === "absolute" ? "absolute" : "relative"
+    var target = mode === "absolute" ? n : position + n
+    if (duration > 0) target = Math.max(0, Math.min(duration, target))
+    else target = Math.max(0, target)
+    if (!ipcSend(["seek", target, "absolute"])) return false
+    position = target
+    pollPosition()
+    return true
+  }
+
+  function pollPosition() {
+    ipcSend({ command: ["get_property", "time-pos"], request_id: 1001 })
   }
 
   function setMuted(value) {
@@ -627,7 +653,7 @@ Item {
   function ipcSubscribe(socket) {
     if (!socket || socket.subscribed || !socket.connected) return
     socket.subscribed = true
-    var props = ["pause", "mute", "volume", "media-title"]
+    var props = ["pause", "mute", "volume", "media-title", "duration", "seekable"]
     for (var i = 0; i < props.length; i++)
       socket.write(JSON.stringify({ command: ["observe_property", i + 1, props[i]] }) + "\n")
     socket.write(JSON.stringify({ command: ["get_property", "pause"] }) + "\n")
@@ -666,6 +692,13 @@ Item {
     onTriggered: reconnect.restart()
   }
 
+  Timer {
+    interval: 1000
+    repeat: true
+    running: mpvProc.running && root.ipcConnected && root.loaded && !root.paused
+    onTriggered: root.pollPosition()
+  }
+
   function handleIpc(msg) {
     if (!msg) return
     if (msg.event === "property-change") {
@@ -673,11 +706,20 @@ Item {
       else if (msg.name === "mute") muted = msg.data === true
       else if (msg.name === "volume" && isFinite(Number(msg.data))) volume = Number(msg.data)
       else if (msg.name === "media-title" && typeof msg.data === "string" && msg.data !== "") title = msg.data
+      else if (msg.name === "duration") duration = isFinite(Number(msg.data)) && Number(msg.data) > 0 ? Number(msg.data) : 0
+      else if (msg.name === "seekable") seekable = msg.data === true
+    } else if (msg.request_id === 1001) {
+      if (msg.error === "success" && isFinite(Number(msg.data))) position = Number(msg.data)
     } else if (msg.event === "file-loaded") {
       loaded = true
       lastError = ""
       retries = 0
+      position = 0
+      pollPosition()
     } else if (msg.event === "end-file") {
+      position = 0
+      duration = 0
+      seekable = false
       if (msg.reason === "error") {
         lastError = "Playback failed: " + (msg.file_error || "unknown error")
         loaded = false
@@ -757,6 +799,18 @@ Item {
       return String(Math.round(root.volume))
     }
 
+    // seek get | seek +10 | seek -10 | seek 90   (signed = relative, unsigned = absolute)
+    function seek(value: string): string {
+      var v = String(value).trim()
+      if (v !== "get") {
+        var n = Number(v)
+        if (!isFinite(n) || v === "") return "usage: seek get|+<secs>|-<secs>|<secs>"
+        if (!root.seek(n, /^[+-]/.test(v) ? "relative" : "absolute"))
+          return root.running ? (root.seekable ? "not loaded" : "not seekable") : "not running"
+      }
+      return Math.round(root.position) + "/" + Math.round(root.duration)
+    }
+
     function quality(value: string): string {
       if (value === "get") return root.quality
       if (!root.setQuality(value)) return "usage: quality get|" + root.qualityOptions.join("|")
@@ -792,6 +846,9 @@ Item {
         paused: root.paused,
         muted: root.muted,
         volume: Math.round(root.volume),
+        position: Math.round(root.position),
+        duration: Math.round(root.duration),
+        seekable: root.seekable,
         quality: root.quality,
         codec: root.codec,
         autoPause: root.autoPause,

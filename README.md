@@ -50,7 +50,9 @@ id) and press Enter or the play button.
 | Right click | Start / stop the saved video |
 
 Inside the panel, `space` pauses, `m` mutes, `s` stops, `u` focuses the URL
-field, `Esc` closes.
+field, `Esc` closes. `Left`/`Right` (or `h`/`l`) skip 5 seconds, `Up`/`Down`
+(or `k`/`j`) skip 60 seconds, and the position slider scrubs; both are hidden
+for live streams, which mpv reports as not seekable.
 
 The video starts muted at 50 percent volume. Whatever was playing when you log
 out resumes at the next login.
@@ -68,11 +70,12 @@ omarchy-shell youtube-background toggle             # start or stop
 omarchy-shell youtube-background pause toggle       # get|true|false|toggle
 omarchy-shell youtube-background mute toggle        # get|true|false|toggle
 omarchy-shell youtube-background volume 30          # get|0-100
+omarchy-shell youtube-background seek +10           # get|+<secs>|-<secs>|<secs>  (signed = relative)
 omarchy-shell youtube-background quality 1440       # get|best|2160|1440|1080|720|480
 omarchy-shell youtube-background codec h264         # get|h264|vp9|any
 omarchy-shell youtube-background url get
 omarchy-shell youtube-background cookies brave+gnomekeyring:Default   # get|<browser spec>|<path>|"" to clear
-omarchy-shell youtube-background status             # JSON
+omarchy-shell youtube-background status             # JSON incl. position, duration, seekable
 ```
 
 Changing the URL while playing swaps the file inside the running mpv, so there
@@ -215,7 +218,9 @@ truly hidden, which gaps and transparency make rare.
   it to see your wallpaper again.
 - Editing `Service.qml` needs `omarchy restart shell`; the shell's hot reload
   re-instantiates a service from cached code. Widget and panel edits hot-reload
-  fine.
+  when the plugin lives directly under `~/.config/omarchy/plugins/`, but not
+  when that entry is a symlink (the watcher does not follow it), so a symlinked
+  checkout needs `omarchy restart shell` for every edit.
 
 ## Uninstall
 
@@ -231,14 +236,15 @@ them.
 
 ## Development
 
-Clone the repo anywhere and symlink it into the plugin directory; the shell
-hot-reloads on save (widget and panel only, see Limitations):
+Clone the repo anywhere and symlink it into the plugin directory. Through a
+symlink nothing hot-reloads (see Limitations), so restart the shell after
+each edit:
 
 ```bash
 git clone https://github.com/RonHolt/omarchy-youtube-background.git ~/omarchy-youtube-background
 ln -s ~/omarchy-youtube-background ~/.config/omarchy/plugins/ron.youtube-background
 omarchy plugin validate ~/omarchy-youtube-background
-omarchy restart shell                                  # after Service.qml edits
+omarchy restart shell                                  # after any edit through a symlink
 omarchy-shell youtube-background status                # JSON incl. ipc and probing flags
 qs log -p /usr/share/omarchy/shell --tail 100 | grep youtube-background
 ```

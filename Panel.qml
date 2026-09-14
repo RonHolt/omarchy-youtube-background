@@ -23,6 +23,9 @@ Panel {
   readonly property bool paused: ready && service.paused
   readonly property bool muted: ready && service.muted
   readonly property real volume: ready ? service.volume : 0
+  readonly property real position: ready ? service.position : 0
+  readonly property real duration: ready ? service.duration : 0
+  readonly property bool seekable: ready && running && service.seekable && duration > 0
   readonly property string title: ready ? service.title : ""
   readonly property string savedUrl: ready ? service.url : ""
   readonly property string lastError: ready ? service.lastError : ""
@@ -110,6 +113,14 @@ Panel {
     keyCatcher.forceActiveFocus()
   }
 
+  function formatTime(secs) {
+    var t = Math.max(0, Math.round(Number(secs) || 0))
+    var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60
+    var mm = h > 0 && m < 10 ? "0" + m : String(m)
+    var ss = sec < 10 ? "0" + sec : String(sec)
+    return (h > 0 ? h + ":" : "") + mm + ":" + ss
+  }
+
   function qualityLabel(q) {
     return q === "best" ? "Best available" : q + "p"
   }
@@ -130,9 +141,18 @@ Panel {
       blocked: urlField.activeFocus || cookiesField.activeFocus
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      // Space and Return never reach onTextKey: the catcher consumes them
+      // as activateRequested.
+      onActivateRequested: if (root.ready) root.service.togglePause()
+      // Left/Right (h/l) skip 5 s, Up/Down (k/j) skip 60 s, as in mpv.
+      onMoveRequested: function(dx, dy) {
+        if (!root.seekable) return
+        if (dx !== 0) root.service.seek(dx * 5, "relative")
+        else if (dy !== 0) root.service.seek(-dy * 60, "relative")
+      }
       onTextKey: function(t) {
         if (!root.ready) return
-        if (t === " " || t === "p") root.service.togglePause()
+        if (t === "p") root.service.togglePause()
         else if (t === "m") root.service.setMuted(!root.muted)
         else if (t === "s") root.service.stop()
         else if (t === "u" || t === "/") { urlField.forceActiveFocus(); urlField.selectAll() }
@@ -286,6 +306,59 @@ Panel {
             selected: !root.muted
             enabled: root.ready
             onClicked: root.service.setMuted(!root.muted)
+          }
+        }
+
+        // ---- Position (hidden for live streams and while nothing plays)
+        Item {
+          width: parent.width
+          visible: root.seekable
+          implicitHeight: Math.max(positionHeader.implicitHeight, positionTime.implicitHeight)
+
+          PanelSectionHeader {
+            id: positionHeader
+            text: "POSITION"
+            foreground: root.fg
+            fontFamily: root.fontFamily
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          Text {
+            id: positionTime
+            textFormat: Text.PlainText
+            text: root.formatTime(positionSlider.dragging ? positionSlider.liveValue : root.position)
+              + " / " + root.formatTime(root.duration)
+            color: Qt.darker(root.fg, 1.4)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(6)
+            anchors.verticalCenter: parent.verticalCenter
+          }
+        }
+
+        CursorSurface {
+          width: parent.width
+          visible: root.seekable
+          height: positionSlider.implicitHeight + Style.spacing.controlGap
+          foreground: root.fg
+          outline: true
+
+          PanelSlider {
+            id: positionSlider
+            bar: root.bar
+            anchors.fill: parent
+            anchors.leftMargin: Style.space(6)
+            anchors.rightMargin: Style.space(6)
+            minimum: 0
+            maximum: Math.max(1, root.duration)
+            step: 1
+            integer: true
+            value: root.position
+            enabled: root.seekable
+            onReleased: function(v) { root.service.seek(v, "absolute") }
           }
         }
 
@@ -450,7 +523,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           width: parent.width
-          text: "Keys: space pause · m mute · s stop · u edit URL · esc close"
+          text: "Keys: space pause · ←/→ skip 5 s · ↑/↓ skip 60 s · m mute · s stop · u edit URL · esc close"
           color: Qt.darker(root.fg, 1.7)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
