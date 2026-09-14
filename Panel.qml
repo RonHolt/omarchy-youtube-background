@@ -262,7 +262,7 @@ Panel {
         else if (!root.ready) event.accepted = false
         else if (t === "p") { root.running ? root.service.togglePause() : root.service.start() }
         else if (t === "m") root.service.setMuted(!root.muted)
-        else if (t === "s") root.service.toggle()
+        else if (t === "s") root.service.stop()
         else if (t === "u" || t === "/") { urlField.forceActiveFocus(); urlField.selectAll() }
         else event.accepted = false
       }
@@ -647,7 +647,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           width: parent.width
-          text: "↑/↓ ←/→ navigate · enter select · h/l 5 s · j/k 60 s · p play/pause · m mute · s start/stop · u url · esc close"
+          text: "↑/↓ ←/→ navigate · enter select · h/l 5 s · j/k 60 s · p play/pause · m mute · s stop · u url · esc close"
           color: Qt.darker(root.fg, 1.7)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
